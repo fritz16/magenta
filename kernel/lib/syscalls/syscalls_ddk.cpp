@@ -13,6 +13,7 @@
 #include <trace.h>
 
 #include <dev/interrupt.h>
+#include <dev/iommu.h>
 #include <dev/udisplay.h>
 #include <kernel/vm.h>
 #include <kernel/vm/vm_object_paged.h>
@@ -24,6 +25,7 @@
 #include <platform/pc/bootloader.h>
 #endif
 
+#include <magenta/bus_transaction_initiator_dispatcher.h>
 #include <magenta/handle_owner.h>
 #include <magenta/interrupt_dispatcher.h>
 #include <magenta/interrupt_event_dispatcher.h>
@@ -36,6 +38,8 @@
 #include <magenta/user_copy.h>
 #include <magenta/vm_object_dispatcher.h>
 #include <mxalloc/new.h>
+#include <mxtl/auto_call.h>
+#include <mxtl/inline_array.h>
 
 #include "syscalls_priv.h"
 
@@ -406,4 +410,138 @@ mx_status_t sys_acpi_cache_flush(mx_handle_t hrsrc) {
 #else
     return MX_ERR_NOT_SUPPORTED;
 #endif
+}
+
+mx_status_t sys_bti_create(mx_handle_t iommu, uint64_t bti_id, user_ptr<mx_handle_t> out) {
+    auto up = ProcessDispatcher::GetCurrent();
+
+    mxtl::RefPtr<IommuDispatcher> iommu_dispatcher;
+    // TODO(teisenbe): This should probably have a right on it.
+    mx_status_t status = up->GetDispatcherWithRights(iommu, MX_RIGHT_NONE, &iommu_dispatcher);
+    if (status != MX_OK) {
+        return status;
+    }
+
+    mxtl::RefPtr<Dispatcher> dispatcher;
+    mx_rights_t rights;
+    // TODO(teisenbe): Migrate BusTransactionInitiatorDispatcher::Create to
+    // taking the iommu_dispatcher
+    status = BusTransactionInitiatorDispatcher::Create(iommu_dispatcher->iommu(), bti_id,
+                                                       &dispatcher, &rights);
+    if (status != MX_OK) {
+        return status;
+    }
+    HandleOwner handle(MakeHandle(mxtl::move(dispatcher), rights));
+
+    mx_handle_t hv = up->MapHandleToValue(handle);
+    if ((status = out.copy_to_user(hv)) != MX_OK) {
+        return status;
+    }
+
+    up->AddHandle(mxtl::move(handle));
+    return MX_OK;
+}
+
+mx_status_t sys_bti_pin(mx_handle_t bti, mx_handle_t vmo, uint64_t offset, uint64_t size,
+        uint32_t perms, user_ptr<uint64_t> extents, uint32_t extents_len,
+        user_ptr<uint32_t> actual_extents_len) {
+    auto up = ProcessDispatcher::GetCurrent();
+
+    if (!IS_PAGE_ALIGNED(offset)) {
+        return MX_ERR_INVALID_ARGS;
+    }
+
+    mxtl::RefPtr<BusTransactionInitiatorDispatcher> bti_dispatcher;
+    mx_status_t status = up->GetDispatcherWithRights(bti, MX_RIGHT_MAP, &bti_dispatcher);
+    if (status != MX_OK) {
+        return status;
+    }
+
+    mxtl::RefPtr<VmObjectDispatcher> vmo_dispatcher;
+    mx_rights_t vmo_rights;
+    status = up->GetDispatcherAndRights(vmo, &vmo_dispatcher, &vmo_rights);
+    if (status != MX_OK) {
+        return status;
+    }
+    if (!(vmo_rights & MX_RIGHT_MAP)) {
+        return MX_ERR_ACCESS_DENIED;
+    }
+
+    // Convert requested permissions and check against VMO rights
+    uint32_t iommu_perms = 0;
+    if (perms & MX_VM_FLAG_PERM_READ) {
+        if (!(vmo_rights & MX_RIGHT_READ)) {
+            return MX_ERR_ACCESS_DENIED;
+        }
+        iommu_perms |= IOMMU_FLAG_PERM_READ;
+        perms &= ~MX_VM_FLAG_PERM_READ;
+    }
+    if (perms & MX_VM_FLAG_PERM_WRITE) {
+        if (!(vmo_rights & MX_RIGHT_WRITE)) {
+            return MX_ERR_ACCESS_DENIED;
+        }
+        iommu_perms |= IOMMU_FLAG_PERM_WRITE;
+        perms &= ~MX_VM_FLAG_PERM_WRITE;
+    }
+    if (perms & MX_VM_FLAG_PERM_EXECUTE) {
+        if (!(vmo_rights & MX_RIGHT_EXECUTE)) {
+            return MX_ERR_ACCESS_DENIED;
+        }
+        iommu_perms |= IOMMU_FLAG_PERM_EXECUTE;
+        perms &= ~MX_VM_FLAG_PERM_EXECUTE;
+    }
+    if (perms) {
+        return MX_ERR_INVALID_ARGS;
+    }
+
+    AllocChecker ac;
+    mxtl::InlineArray<dev_vaddr_t, 4u> mapped_extents(&ac, extents_len);
+    if (!ac.check()) {
+        return MX_ERR_NO_MEMORY;
+    }
+
+    size_t actual_len;
+    status = bti_dispatcher->Pin(vmo_dispatcher->vmo(), offset, size, iommu_perms,
+                                 mapped_extents.get(), extents_len, &actual_len);
+    if (status != MX_OK) {
+        return status;
+    }
+
+    auto pin_cleanup = mxtl::MakeAutoCall([&bti_dispatcher, &mapped_extents, actual_len]() {
+        bti_dispatcher->Unpin(mapped_extents.get(), actual_len);
+    });
+
+    static_assert(sizeof(dev_vaddr_t) == sizeof(uint64_t), "mismatched types");
+    if ((status = extents.copy_array_to_user(mapped_extents.get(), actual_len)) != MX_OK) {
+        return status;
+    }
+    if ((status = actual_extents_len.copy_to_user(static_cast<uint32_t>(actual_len))) != MX_OK) {
+        return status;
+    }
+
+    pin_cleanup.cancel();
+    return MX_OK;
+}
+
+mx_status_t sys_bti_unpin(mx_handle_t bti, user_ptr<const uint64_t> extents, uint32_t extents_len) {
+    auto up = ProcessDispatcher::GetCurrent();
+
+    mxtl::RefPtr<BusTransactionInitiatorDispatcher> bti_dispatcher;
+    mx_status_t status = up->GetDispatcherWithRights(bti, MX_RIGHT_MAP, &bti_dispatcher);
+    if (status != MX_OK) {
+        return status;
+    }
+
+    AllocChecker ac;
+    mxtl::InlineArray<dev_vaddr_t, 4u> mapped_extents(&ac, extents_len);
+    if (!ac.check()) {
+        return MX_ERR_NO_MEMORY;
+    }
+    static_assert(sizeof(dev_vaddr_t) == sizeof(uint64_t), "mismatched types");
+    if ((status = extents.copy_array_from_user(mapped_extents.get(), extents_len)) != MX_OK) {
+        return status;
+    }
+
+    return bti_dispatcher->Unpin(mapped_extents.get(), extents_len);
+
 }
