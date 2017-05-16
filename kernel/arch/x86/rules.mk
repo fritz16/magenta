@@ -81,6 +81,7 @@ MODULE_SRCS += \
 	$(LOCAL_DIR)/vmexit.cpp \
 
 MODULE_DEPS += \
+	kernel/dev/iommu/dummy \
 	kernel/lib/bitmap \
 	kernel/lib/hypervisor \
 
