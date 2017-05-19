@@ -19,6 +19,9 @@
 #if WITH_DEV_IOMMU_DUMMY
 #include <dev/iommu/dummy.h>
 #endif // WITH_DEV_IOMMU_DUMMY
+#if WITH_DEV_IOMMU_INTEL
+#include <dev/iommu/intel.h>
+#endif // WITH_DEV_IOMMU_INTEL
 
 #define LOCAL_TRACE 0
 
@@ -34,6 +37,11 @@ mx_status_t IommuDispatcher::Create(uint32_t type, mxtl::unique_ptr<const uint8_
             status = DummyIommu::Create(mxtl::move(desc), desc_len, &iommu);
             break;
 #endif // WITH_DEV_IOMMU_DUMMY
+#if WITH_DEV_IOMMU_INTEL
+        case MX_IOMMU_TYPE_INTEL:
+            status = IntelIommu::Create(mxtl::move(desc), desc_len, &iommu);
+            break;
+#endif // WITH_DEV_IOMMU_INTEL
         default:
             return MX_ERR_NOT_SUPPORTED;
     }

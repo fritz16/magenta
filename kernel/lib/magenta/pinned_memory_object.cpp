@@ -162,13 +162,13 @@ status_t PinnedMemoryObject::MapIntoIommu(uint32_t perms) {
         .perms = perms,
     };
     status_t status = vmo_->Lookup(offset_, size_, 0, IommuMapPage, static_cast<void*>(&context));
+    mapped_extents_len_ = context.num_entries;
     if (status != MX_OK) {
         status_t err = UnmapFromIommu();
         ASSERT(err == MX_OK);
         return status;
     }
 
-    mapped_extents_len_ = context.num_entries;
     return MX_OK;
 }
 
@@ -176,21 +176,29 @@ status_t PinnedMemoryObject::UnmapFromIommu() {
     auto iommu = bti_.iommu();
     const uint64_t bus_txn_id = bti_.bti_id();
 
+    if (unlikely(mapped_extents_len_ == 0)) {
+        return MX_OK;
+    }
+
+    status_t status = MX_OK;
     if (is_contiguous_) {
-        return iommu->Unmap(bus_txn_id, mapped_extents_[0].base(), ROUNDUP(size_, PAGE_SIZE));
+        status = iommu->Unmap(bus_txn_id, mapped_extents_[0].base(), ROUNDUP(size_, PAGE_SIZE));
     } else {
-        status_t status = MX_OK;
         for (size_t i = 0; i < mapped_extents_len_; ++i) {
             // Try to unmap all pages even if we get an error, and return the
             // first error encountered.
             status_t err = iommu->Unmap(bus_txn_id, mapped_extents_[i].base(),
                                         mapped_extents_[i].pages() * PAGE_SIZE);
+            DEBUG_ASSERT(err == MX_OK);
             if (err != MX_OK && status == MX_OK) {
                 status = err;
             }
         }
-        return status;
     }
+    // Clear this so we won't try again if this gets called again in the
+    // destructor.
+    mapped_extents_len_ = 0;
+    return status;
 }
 
 PinnedMemoryObject::~PinnedMemoryObject() {

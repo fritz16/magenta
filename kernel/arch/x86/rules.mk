@@ -82,6 +82,7 @@ MODULE_SRCS += \
 
 MODULE_DEPS += \
 	kernel/dev/iommu/dummy \
+	kernel/dev/iommu/intel \
 	kernel/lib/bitmap \
 	kernel/lib/hypervisor \
 

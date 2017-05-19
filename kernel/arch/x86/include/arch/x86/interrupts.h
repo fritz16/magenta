@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include <assert.h>
+
 #ifdef ASSEMBLY
 #define X86_MAX_INT 0xff
 #else
@@ -42,7 +44,9 @@ enum x86_interrupt_vector {
     X86_INT_IPI_GENERIC,
     X86_INT_IPI_RESCHEDULE,
     X86_INT_IPI_HALT,
+    X86_INT_RESERVED_SENTINEL,
 
     X86_MAX_INT = 0xff,
 };
+static_assert(X86_INT_RESERVED_SENTINEL <= 0x100, "value overflow");
 #endif

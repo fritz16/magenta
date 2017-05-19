@@ -9,7 +9,6 @@
 #include <pow2.h>
 #include <trace.h>
 
-#include <dev/iommu/dummy.h>
 #include <kernel/auto_lock.h>
 #include <kernel/cmdline.h>
 #include <kernel/mutex.h>
