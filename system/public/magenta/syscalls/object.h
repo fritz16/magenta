@@ -55,6 +55,7 @@ typedef enum {
     MX_OBJ_TYPE_GUEST               = 21,
     MX_OBJ_TYPE_TIMER               = 22,
     MX_OBJ_TYPE_IOMMU               = 23,
+    MX_OBJ_TYPE_BTI                 = 24,
     MX_OBJ_TYPE_LAST
 } mx_obj_type_t;
 
