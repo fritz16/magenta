@@ -17,7 +17,7 @@
 
 #define LOCAL_TRACE 0
 
-mx_status_t IommuDispatcher::Create(uint32_t type, mxtl::unique_ptr<const void> desc,
+mx_status_t IommuDispatcher::Create(uint32_t type, mxtl::unique_ptr<const uint8_t[]> desc,
                                     uint32_t desc_len, mxtl::RefPtr<Dispatcher>* dispatcher,
                                     mx_rights_t* rights) {
 

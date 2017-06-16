@@ -28,11 +28,14 @@
 #include <magenta/interrupt_dispatcher.h>
 #include <magenta/interrupt_event_dispatcher.h>
 #include <magenta/io_mapping_dispatcher.h>
+#include <magenta/iommu_dispatcher.h>
 #include <magenta/magenta.h>
 #include <magenta/process_dispatcher.h>
+#include <magenta/syscalls/iommu.h>
 #include <magenta/syscalls/pci.h>
 #include <magenta/user_copy.h>
 #include <magenta/vm_object_dispatcher.h>
+#include <mxalloc/new.h>
 
 #include "syscalls_priv.h"
 
@@ -306,6 +309,51 @@ mx_status_t sys_io_mapping_get_info(mx_handle_t handle,
         return status;
 
     return _out_size.copy_to_user(size);
+}
+
+// TODO: Write docs for this syscall
+mx_status_t sys_iommu_create(mx_handle_t rsrc_handle, uint32_t type, user_ptr<const void> desc,
+                             uint32_t desc_len, user_ptr<mx_handle_t> out) {
+    // TODO: finer grained validation
+    mx_status_t status;
+    if ((status = validate_resource(rsrc_handle, MX_RSRC_KIND_ROOT)) < 0) {
+        return status;
+    }
+
+    if (desc_len > MX_IOMMU_MAX_DESC_LEN) {
+        return MX_ERR_INVALID_ARGS;
+    }
+
+    mxtl::RefPtr<Dispatcher> dispatcher;
+    mx_rights_t rights;
+
+    {
+        // Copy the descriptor into the kernel and try to create the dispatcher
+        // using it.
+        AllocChecker ac;
+        mxtl::unique_ptr<uint8_t[]> copied_desc(new (&ac) uint8_t[desc_len]);
+        if (!ac.check()) {
+            return MX_ERR_NO_MEMORY;
+        }
+        if ((status = desc.copy_array_from_user(copied_desc.get(), desc_len)) != MX_OK) {
+            return status;
+        }
+        status = IommuDispatcher::Create(type,
+                                         mxtl::unique_ptr<const uint8_t[]>(copied_desc.release()),
+                                         desc_len, &dispatcher, &rights);
+        if (status != MX_OK) {
+            return status;
+        }
+    }
+
+    HandleOwner handle(MakeHandle(mxtl::move(dispatcher), rights));
+
+    auto up = ProcessDispatcher::GetCurrent();
+    if (out.copy_to_user(up->MapHandleToValue(handle)) != MX_OK)
+        return MX_ERR_INVALID_ARGS;
+
+    up->AddHandle(mxtl::move(handle));
+    return MX_OK;
 }
 
 #if ARCH_X86

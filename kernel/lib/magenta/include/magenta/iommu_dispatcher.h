@@ -15,9 +15,9 @@
 
 class IommuDispatcher final : public Dispatcher {
 public:
-    static mx_status_t Create(uint32_t type, mxtl::unique_ptr<const void> desc,
+    static mx_status_t Create(uint32_t type, mxtl::unique_ptr<const uint8_t[]> desc,
                               uint32_t desc_len, mxtl::RefPtr<Dispatcher>* dispatcher,
-                              mx_rights_t* rights) {
+                              mx_rights_t* rights);
 
     ~IommuDispatcher() final;
     mx_obj_type_t get_type() const final { return MX_OBJ_TYPE_IOMMU; }
