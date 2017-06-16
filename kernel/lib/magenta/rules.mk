@@ -26,6 +26,7 @@ MODULE_SRCS := \
     $(LOCAL_DIR)/hypervisor_dispatcher.cpp \
     $(LOCAL_DIR)/interrupt_event_dispatcher.cpp \
     $(LOCAL_DIR)/io_mapping_dispatcher.cpp \
+    $(LOCAL_DIR)/iommu_dispatcher.cpp \
     $(LOCAL_DIR)/job_dispatcher.cpp \
     $(LOCAL_DIR)/log_dispatcher.cpp \
     $(LOCAL_DIR)/magenta.cpp \
