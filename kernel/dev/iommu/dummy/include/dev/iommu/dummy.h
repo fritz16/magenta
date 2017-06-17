@@ -7,12 +7,14 @@
 #pragma once
 
 #include <dev/iommu.h>
-
 #include <magenta/compiler.h>
+#include <magenta/syscalls/iommu.h>
+#include <mxtl/unique_ptr.h>
 
 class DummyIommu final : public Iommu {
 public:
-    static mxtl::RefPtr<Iommu> Create();
+    static status_t Create(mxtl::unique_ptr<const uint8_t[]> desc, uint32_t desc_len,
+                           mxtl::RefPtr<Iommu>* out);
 
     bool IsValidBusTxnId(uint64_t bus_txn_id) const final;
 

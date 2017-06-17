@@ -14,13 +14,19 @@
 DummyIommu::DummyIommu() {
 }
 
-mxtl::RefPtr<Iommu> DummyIommu::Create() {
+status_t DummyIommu::Create(mxtl::unique_ptr<const uint8_t[]> desc, uint32_t desc_len,
+                            mxtl::RefPtr<Iommu>* out) {
+    if (desc_len != sizeof(mx_iommu_desc_dummy_t)) {
+        return MX_ERR_INVALID_ARGS;
+    }
+
     AllocChecker ac;
     auto instance = mxtl::AdoptRef<DummyIommu>(new (&ac) DummyIommu());
     if (!ac.check()) {
-        return nullptr;
+        return MX_ERR_NO_MEMORY;
     }
-    return instance;
+    *out = mxtl::move(instance);
+    return MX_OK;
 }
 
 DummyIommu::~DummyIommu() {
