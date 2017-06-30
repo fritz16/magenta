@@ -32,6 +32,8 @@ typedef struct pci_protocol_ops {
     mx_status_t (*map_resource)(void* ctx, uint32_t res_id, uint32_t cache_policy,
                                 void** vaddr, size_t* size, mx_handle_t* out_handle);
     mx_status_t (*enable_bus_master)(void* ctx, bool enable);
+    // TODO(teisenbe): Merge this into enable_bus_master
+    mx_status_t (*get_bti)(void* ctx, mx_handle_t* out_handle);
     mx_status_t (*enable_pio)(void* ctx, bool enable);
     mx_status_t (*reset_device)(void* ctx);
     mx_status_t (*map_interrupt)(void* ctx, int which_irq, mx_handle_t* out_handle);

@@ -15,6 +15,20 @@ static mx_status_t kpci_enable_bus_master(void* ctx, bool enable) {
     return mx_pci_enable_bus_master(device->handle, enable);
 }
 
+static mx_status_t kpci_get_bti(void* ctx, mx_handle_t* out_handle) {
+    kpci_device_t* device = ctx;
+
+    for (size_t i = 0; i < countof(device->props); ++i) {
+        if (device->props[i].id == BIND_PCI_BDF_ADDR) {
+            const uint32_t bdf = device->props[i].id;
+            const mx_handle_t iommu_handle = MX_HANDLE_INVALID;
+            return mx_bti_create(iommu_handle, bdf, out_handle);
+        }
+    }
+
+    return MX_ERR_NOT_SUPPORTED;
+}
+
 static mx_status_t kpci_enable_pio(void* ctx, bool enable) {
     kpci_device_t* device = ctx;
     return mx_pci_enable_pio(device->handle, enable);
@@ -187,6 +201,7 @@ static mx_status_t kpci_get_device_info(void* ctx, mx_pcie_device_info_t* out_in
 static pci_protocol_ops_t _pci_protocol = {
     .enable_bus_master = kpci_enable_bus_master,
     .enable_pio = kpci_enable_pio,
+    .get_bti = kpci_get_bti,
     .reset_device = kpci_reset_device,
     .map_resource = kpci_map_resource,
     .map_interrupt = kpci_map_interrupt,
