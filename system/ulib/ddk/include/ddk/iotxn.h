@@ -186,6 +186,9 @@ ssize_t iotxn_copyfrom(iotxn_t* txn, void* data, size_t length, size_t offset);
 // Out of range operations are ignored.
 ssize_t iotxn_copyto(iotxn_t* txn, const void* data, size_t length, size_t offset);
 
+// set the bti to be used when performing physmap
+void iotxn_set_default_bti(mx_handle_t bti);
+
 // iotxn_physmap() looks up the physical pages backing this iotxn's vm object.
 // the 'phys' and 'phys_count' fields are set if this function succeeds.
 mx_status_t iotxn_physmap(iotxn_t* txn);

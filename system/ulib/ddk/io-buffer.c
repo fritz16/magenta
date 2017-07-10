@@ -4,10 +4,13 @@
 
 #include <ddk/io-buffer.h>
 #include <ddk/driver.h>
+#include <magenta/assert.h>
 #include <magenta/process.h>
 #include <magenta/syscalls.h>
 #include <limits.h>
 #include <stdio.h>
+
+#include "internal.h"
 
 static mx_status_t io_buffer_init_common(io_buffer_t* buffer, mx_handle_t vmo_handle, size_t size,
                                          mx_off_t offset, uint32_t flags) {
@@ -21,8 +24,18 @@ static mx_status_t io_buffer_init_common(io_buffer_t* buffer, mx_handle_t vmo_ha
     }
 
     mx_paddr_t phys;
-    size_t lookup_size = size < PAGE_SIZE ? size : PAGE_SIZE;
-    status = mx_vmo_op_range(vmo_handle, MX_VMO_OP_LOOKUP, 0, lookup_size, &phys, sizeof(phys));
+    if (io_default_bti == MX_HANDLE_INVALID) {
+        size_t lookup_size = size < PAGE_SIZE ? size : PAGE_SIZE;
+        status = mx_vmo_op_range(vmo_handle, MX_VMO_OP_LOOKUP, 0, lookup_size, &phys, sizeof(phys));
+    } else {
+        uint32_t actual_extents;
+        status = mx_bti_pin(io_default_bti, vmo_handle, 0, ROUNDUP(size, PAGE_SIZE),
+                            MX_VM_FLAG_PERM_READ | MX_VM_FLAG_PERM_WRITE,
+                            &phys, 1, &actual_extents);
+        // We should remove this assert by tracking the length of this array
+        // explicitly in buffer.
+        MX_DEBUG_ASSERT(status != MX_OK || actual_extents == 1);
+    }
     if (status != MX_OK) {
         printf("io_buffer: mx_vmo_op_range failed %d size: %zu\n", status, size);
         mx_vmar_unmap(mx_vmar_root_self(), virt, size);
@@ -113,6 +126,11 @@ mx_status_t io_buffer_init_physical(io_buffer_t* buffer, mx_paddr_t addr, size_t
 
 void io_buffer_release(io_buffer_t* buffer) {
     if (buffer->vmo_handle) {
+        if (io_default_bti != MX_HANDLE_INVALID) {
+            mx_status_t status = mx_bti_unpin(io_default_bti, &buffer->phys, 1);
+            MX_DEBUG_ASSERT(status == MX_OK);
+        }
+
         mx_vmar_unmap(mx_vmar_root_self(), (uintptr_t)buffer->virt, buffer->size);
         mx_handle_close(buffer->vmo_handle);
         buffer->vmo_handle = MX_HANDLE_INVALID;
