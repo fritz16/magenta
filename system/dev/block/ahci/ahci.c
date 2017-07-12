@@ -710,13 +710,20 @@ static mx_status_t ahci_bind(void* ctx, mx_device_t* dev, void** cookie) {
         return MX_ERR_NOT_SUPPORTED;
     }
 
+    mx_handle_t bti;
+    mx_status_t status = device->pci.ops->get_bti(device->pci.ctx, &bti);
+    if (status != MX_OK) {
+        goto fail;
+    }
+    iotxn_set_default_bti(bti);
+
     // map register window
-    mx_status_t status = pci_map_resource(&device->pci,
-                                          PCI_RESOURCE_BAR_5,
-                                          MX_CACHE_POLICY_UNCACHED_DEVICE,
-                                          (void**)&device->regs,
-                                          &device->regs_size,
-                                          &device->regs_handle);
+    status = pci_map_resource(&device->pci,
+                              PCI_RESOURCE_BAR_5,
+                              MX_CACHE_POLICY_UNCACHED_DEVICE,
+                              (void**)&device->regs,
+                              &device->regs_size,
+                              &device->regs_handle);
     if (status != MX_OK) {
         xprintf("ahci: error %d mapping register window\n", status);
         goto fail;

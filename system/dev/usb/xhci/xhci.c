@@ -161,7 +161,7 @@ static mx_status_t xhci_vmo_init(size_t size, mx_handle_t* out_handle, mx_vaddr_
     }
 
     if (!contiguous) {
-        // needs to be done before MX_VMO_OP_LOOKUP for non-contiguous VMOs
+        // needs to be done before mx_bti_pin for non-contiguous VMOs
         status = mx_vmo_op_range(handle, MX_VMO_OP_COMMIT, 0, size, NULL, 0);
         if (status != MX_OK) {
             printf("xhci_vmo_init: mx_vmo_op_range(MX_VMO_OP_COMMIT) failed %d\n", status);
@@ -189,7 +189,7 @@ static void xhci_vmo_release(mx_handle_t handle, mx_vaddr_t virt) {
     mx_handle_close(handle);
 }
 
-mx_status_t xhci_init(xhci_t* xhci, void* mmio) {
+mx_status_t xhci_init(xhci_t* xhci, void* mmio, mx_handle_t bti) {
     mx_status_t result = MX_OK;
     mx_paddr_t* phys_addrs = NULL;
 
@@ -284,15 +284,24 @@ mx_status_t xhci_init(xhci_t* xhci, void* mmio) {
 
     // set up DCBAA, ERST array and input context
     xhci->dcbaa = (uint64_t *)xhci->dcbaa_erst_virt;
-    result = mx_vmo_op_range(xhci->dcbaa_erst_handle, MX_VMO_OP_LOOKUP, 0, PAGE_SIZE,
-                             &xhci->dcbaa_phys, sizeof(xhci->dcbaa_phys));
+    uint32_t expected_num_addrs;
+    result = mx_bti_pin(bti, xhci->dcbaa_erst_handle, 0, PAGE_SIZE,
+                        MX_VM_FLAG_PERM_READ | MX_VM_FLAG_PERM_WRITE,
+                        &xhci->dcbaa_phys, 1, &expected_num_addrs);
+    if (result == MX_OK && expected_num_addrs != 1) {
+        result = MX_ERR_BAD_STATE;
+    }
     if (result != MX_OK) {
         printf("mx_vmo_op_range failed for xhci->dcbaa_erst_handle\n");
         goto fail;
     }
     xhci->input_context = (uint8_t *)xhci->input_context_virt;
-    result = mx_vmo_op_range(xhci->input_context_handle, MX_VMO_OP_LOOKUP, 0, PAGE_SIZE,
-                             &xhci->input_context_phys, sizeof(xhci->input_context_phys));
+    result = mx_bti_pin(bti, xhci->input_context_handle, 0, PAGE_SIZE,
+                        MX_VM_FLAG_PERM_READ | MX_VM_FLAG_PERM_WRITE,
+                        &xhci->input_context_phys, 1, &expected_num_addrs);
+    if (result == MX_OK && expected_num_addrs != 1) {
+        result = MX_ERR_BAD_STATE;
+    }
     if (result != MX_OK) {
         printf("mx_vmo_op_range failed for xhci->input_context_handle\n");
         goto fail;
@@ -308,8 +317,12 @@ mx_status_t xhci_init(xhci_t* xhci, void* mmio) {
         off_t offset = 0;
         for (uint32_t i = 0; i < scratch_pad_bufs; i++) {
             mx_paddr_t scratch_pad_phys;
-            result = mx_vmo_op_range(xhci->scratch_pad_pages_handle, MX_VMO_OP_LOOKUP, offset,
-                                     PAGE_SIZE, &scratch_pad_phys, sizeof(scratch_pad_phys));
+            result = mx_bti_pin(bti, xhci->scratch_pad_pages_handle, offset, xhci->page_size,
+                                MX_VM_FLAG_PERM_READ | MX_VM_FLAG_PERM_WRITE,
+                                &scratch_pad_phys, 1, &expected_num_addrs);
+            if (result == MX_OK && expected_num_addrs != 1) {
+                result = MX_ERR_BAD_STATE;
+            }
             if (result != MX_OK) {
                 printf("mx_vmo_op_range failed for xhci->scratch_pad_pages_handle\n");
                 goto fail;
@@ -319,8 +332,13 @@ mx_status_t xhci_init(xhci_t* xhci, void* mmio) {
         }
 
         mx_paddr_t scratch_pad_index_phys;
-        result = mx_vmo_op_range(xhci->scratch_pad_index_handle, MX_VMO_OP_LOOKUP, 0, PAGE_SIZE,
-                                  &scratch_pad_index_phys, sizeof(scratch_pad_index_phys));
+        const size_t scratch_pad_index_size = PAGE_ROUNDUP(scratch_pad_bufs * sizeof(uint64_t));
+        result = mx_bti_pin(bti, xhci->scratch_pad_index_handle, 0, scratch_pad_index_size,
+                            MX_VM_FLAG_PERM_READ | MX_VM_FLAG_PERM_WRITE,
+                            &scratch_pad_index_phys, 1, &expected_num_addrs);
+        if (result == MX_OK && expected_num_addrs != 1) {
+            result = MX_ERR_BAD_STATE;
+        }
         if (result != MX_OK) {
             printf("mx_vmo_op_range failed for xhci->scratch_pad_index_handle\n");
             goto fail;

@@ -169,7 +169,7 @@ struct xhci {
     mx_vaddr_t scratch_pad_index_virt;
 };
 
-mx_status_t xhci_init(xhci_t* xhci, void* mmio);
+mx_status_t xhci_init(xhci_t* xhci, void* mmio, mx_handle_t bti);
 mx_status_t xhci_endpoint_init(xhci_endpoint_t* ep, int ring_count);
 void xhci_endpoint_free(xhci_endpoint_t* ep);
 int xhci_get_ep_state(xhci_endpoint_t* ep);

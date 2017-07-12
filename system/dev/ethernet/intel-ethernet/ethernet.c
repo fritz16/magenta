@@ -160,6 +160,13 @@ static mx_status_t eth_bind(void* ctx, mx_device_t* dev, void** cookie) {
         goto fail;
     }
 
+    mx_handle_t bti;
+    mx_status_t status = edev->pci.ops->get_bti(edev->pci.ctx, &bti);
+    if (status != MX_OK) {
+        goto fail;
+    }
+    iotxn_set_default_bti(bti);
+
     // Query whether we have MSI or Legacy interrupts.
     uint32_t irq_cnt = 0;
     if ((pci_query_irq_mode_caps(&edev->pci, MX_PCIE_IRQ_MODE_MSI, &irq_cnt) == MX_OK) &&

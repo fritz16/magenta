@@ -223,6 +223,13 @@ static mx_status_t usb_xhci_bind(void* ctx, mx_device_t* dev, void** cookie) {
         goto error_return;
     }
 
+    mx_handle_t bti;
+    status = pci.ops->get_bti(pci.ctx, &bti);
+    if (status != MX_OK) {
+        goto error_return;
+    }
+    iotxn_set_default_bti(bti);
+
     xhci = calloc(1, sizeof(xhci_t));
     if (!xhci) {
         status = MX_ERR_NO_MEMORY;
@@ -279,7 +286,7 @@ static mx_status_t usb_xhci_bind(void* ctx, mx_device_t* dev, void** cookie) {
     // stash this here for the startup thread to call device_add() with
     xhci->parent = dev;
 
-    status = xhci_init(xhci, mmio);
+    status = xhci_init(xhci, mmio, bti);
     if (status != MX_OK) {
         goto error_return;
     }
