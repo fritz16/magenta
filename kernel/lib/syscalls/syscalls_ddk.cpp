@@ -324,6 +324,23 @@ mx_status_t sys_iommu_create(mx_handle_t rsrc_handle, uint32_t type, user_ptr<co
         return status;
     }
 
+    TRACEF("IOMMU Create\n");
+    static mxtl::RefPtr<Dispatcher> main_iommu = nullptr;
+    static Mutex m;
+    static mx_rights_t main_iommu_rights;
+    AutoLock guard(&m);
+    if (type == MX_IOMMU_TYPE_DUMMY && main_iommu) {
+        TRACEF("Using stashed IOMMU\n");
+        HandleOwner handle(MakeHandle(main_iommu, main_iommu_rights));
+
+        auto up = ProcessDispatcher::GetCurrent();
+        if (out.copy_to_user(up->MapHandleToValue(handle)) != MX_OK)
+            return MX_ERR_INVALID_ARGS;
+
+        up->AddHandle(mxtl::move(handle));
+        return MX_OK;
+    }
+
     if (desc_len > MX_IOMMU_MAX_DESC_LEN) {
         return MX_ERR_INVALID_ARGS;
     }
@@ -349,6 +366,9 @@ mx_status_t sys_iommu_create(mx_handle_t rsrc_handle, uint32_t type, user_ptr<co
             return status;
         }
     }
+
+    main_iommu = dispatcher;
+    main_iommu_rights = rights;
 
     HandleOwner handle(MakeHandle(mxtl::move(dispatcher), rights));
 
