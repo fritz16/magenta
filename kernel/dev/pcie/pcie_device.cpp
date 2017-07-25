@@ -28,7 +28,7 @@
 
 #include <mxalloc/new.h>
 
-#define LOCAL_TRACE 0
+#define LOCAL_TRACE 1
 
 namespace {  // anon namespace.  Externals do not need to know about PcieDeviceImpl
 class PcieDeviceImpl : public PcieDevice {
@@ -411,6 +411,15 @@ status_t PcieDevice::ProbeBarLocked(uint bar_id) {
     /* Determine the type of BAR this is.  Make sure that it is one of the types we understand */
     pcie_bar_info_t& bar_info  = bars_[bar_id];
     uint32_t bar_val           = cfg_->Read(PciConfig::kBAR(bar_id));
+    printf("[%02x:%02x.%1x][%04x:%04x] bar[%u] by 1: %#08x\n",
+            bus_id(), dev_id(), func_id(), bar_id, vendor_id(), device_id(),
+            bar_val);
+    printf("[%02x:%02x.%1x] bar[%u] by 4: 0x%02x%02x%02x%02x\n",
+            bus_id(), dev_id(), func_id(), bar_id,
+            cfg_->Read(PciReg8(static_cast<uint16_t>(0x10 + (bar_id * 4) + 3))),
+            cfg_->Read(PciReg8(static_cast<uint16_t>(0x10 + (bar_id * 4) + 2))),
+            cfg_->Read(PciReg8(static_cast<uint16_t>(0x10 + (bar_id * 4) + 1))),
+            cfg_->Read(PciReg8(static_cast<uint16_t>(0x10 + (bar_id * 4) + 3))));
     bar_info.is_mmio           = (bar_val & PCI_BAR_IO_TYPE_MASK) == PCI_BAR_IO_TYPE_MMIO;
     bar_info.is_64bit          = bar_info.is_mmio &&
                                  ((bar_val & PCI_BAR_MMIO_TYPE_MASK) == PCI_BAR_MMIO_TYPE_64BIT);
@@ -492,6 +501,7 @@ status_t PcieDevice::ProbeBarLocked(uint bar_id) {
 
 
 status_t PcieDevice::AllocateBars() {
+    TRACE_ENTRY;
     AutoLock dev_lock(&dev_lock_);
     return AllocateBarsLocked();
 }
