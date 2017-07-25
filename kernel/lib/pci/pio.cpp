@@ -22,14 +22,7 @@ static mutex_t pio_lock = MUTEX_INITIAL_VALUE(pio_lock);
 
 static constexpr uint16_t kPciConfigAddr = 0xCF8;
 static constexpr uint16_t kPciConfigData = 0xCFC;
-
-static constexpr uint32_t PciBdfAddr(uint8_t bus, uint8_t dev, uint8_t func, uint8_t off) {
-    return ((1 << 31) |           // bit 31: enable bit, bits 30-24 reserved
-           ((bus & 0xFF) << 16) | // bits 23-16 bus
-           ((dev & 0x1F) << 11) | // bits 15-11 device
-           ((func & 0x7) << 8) |  // bifs 10-8 func
-           (off & 0xFC));         // bits 7-2 register, bits 1 & 0 must be zero
-}
+static constexpr uint32_t kPciCfgEnable = (1 << 31);
 
 mx_status_t PioCfgRead(uint32_t addr, uint32_t* val, size_t width) {
     mxtl::AutoLock lock(&pio_lock);
@@ -39,7 +32,7 @@ mx_status_t PioCfgRead(uint32_t addr, uint32_t* val, size_t width) {
         return MX_ERR_INVALID_ARGS;
     }
 
-    outpd(kPciConfigAddr, addr);
+    outpd(kPciConfigAddr, addr | kPciCfgEnable);;
     uint32_t tmp_val = inpd(kPciConfigData);
     uint32_t width_mask = (1 << width) - 1;
 
@@ -63,7 +56,7 @@ mx_status_t PioCfgWrite(uint32_t addr, uint32_t val, size_t width) {
 
     uint32_t width_mask = (1 << width) - 1;
     uint32_t write_mask = width_mask << shift;
-    outpd(kPciConfigAddr, addr);
+    outpd(kPciConfigAddr, addr | kPciCfgEnable);
     uint32_t tmp_val = inpd(kPciConfigData);
 
     val &= width_mask;
